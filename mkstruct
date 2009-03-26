@@ -1,0 +1,10 @@
+#!/bin/sh
+
+mkdir bin
+mkdir lib
+mkdir res
+mkdir tmplib
+mkdir tmpclasses
+mkdir compiler/jars
+mkdir compiler/odata
+
