@@ -1,0 +1,316 @@
+#!/usr/bin/perl
+use Text::Iconv;
+
+$comversion="1.01";
+$lname="Test Book";
+$cldc=0;
+$maxbooksize=80000; # Split in parts this size;
+$jartype=2;
+# type=0 - MIDP 1;
+#      1 - MIDP 2;
+#      2 - NOKIA;
+
+
+$cli_enc  =$ARGV[0];
+$file_enc =$ARGV[1];
+$booktext =$ARGV[2];
+$appname  =$ARGV[3];
+$bookdescr=$ARGV[4];
+
+$booksize=-s $booktext;
+if ($booksize<$maxbooksize) { $bookpart=0; } else { $bookpart=1; }
+
+$cfont=0;
+loadfont();
+
+open (IF, "$booktext");
+$idata="";
+do {
+  $is=<IF>;
+  $idata=$idata.$is;
+  if (length($idata)>=$maxbooksize) {
+    $gcp=0;
+    do {
+      $gix=index($idata, ".", $gcp);
+      if (($gix>=$gcp)&&($gix<$maxbooksize)) { $gcp=$gix+1; }
+    } while ($gcp==($gix+1));
+    $cdata=substr($idata, 0, $gcp);
+    substr($idata, 0, $gcp)="";
+    $gcp=length($cdata); print "Part Size: $gcp\n";
+    mkbook();
+    if ($bookpart==0) { $jarname=$appname; } else { $jarname=sprintf($appname."_%02d", $bookpart); $bookpart++; }
+    mkJar($jartype, $jarname, $cldc);
+    while (index("\n\r\t ", substr($idata, 0, 1))>=0) { substr($idata, 0, 1)=""; }
+  }
+} while(!eof(IF));
+$cdata=$idata;
+$gcp=length($cdata); print "Part Size: $gcp\n";
+mkbook();
+if ($bookpart==0) { $jarname=$appname; } else { $jarname=sprintf($appname."_%02d", $bookpart); }
+mkJar($jartype, $jarname);
+
+sub loadfont {
+  $argp=2;
+  $fontcnt=0;
+  do {
+    $fontname=$ARGV[$argp]; $argp++;
+    print "Loading font($fontcnt) $fontname\n";
+    open(F, "$fontname");
+    $s=<F>; chomp($s); $fontdescr[$fontcnt]=$s;
+    $s=<F>; chomp($s); $fontfile [$fontcnt]=$s;
+    $s=<F>; chomp($s); $fontenc  [$fontcnt]=$s;
+    $s=<F>; chomp($s); $fontfrom [$fontcnt]=$s;
+    $s=<F>; chomp($s); $font__to [$fontcnt]=$s;
+    $s=<F>; chomp($s); $fontwrap [$fontcnt]=$s;
+    $conv[$fontcnt]=Text::Iconv->new($fontenc[$fontcnt], "utf16be");
+    $lc=0;
+    while (defined($s=<F>)) { chomp($s); $fontview[$fontcnt][$lc++]=$s; }
+    close(F);
+
+    open(F, $fontfile[$fontcnt]);
+    $lp=0;
+    $gc=0;
+    while (defined($s=<F>)) {
+      chomp($s);
+      substr($s, 0, 1)="";
+      substr($s, length($s)-2, 1)="";
+      $i=index($s, "#FF0000"); if ($i>=0) {$c_r[$fontcnt]=substr($s, 0, 1); }
+      $i=index($s, "#FFFFFF"); if ($i>=0) {$c_w[$fontcnt]=substr($s, 0, 1); }
+      $i=index($s, "#000000"); if ($i>=0) {$c_b[$fontcnt]=substr($s, 0, 1); }
+      if (length($s)>32) {
+        if (substr($s, 0, 1) eq $c_r[$fontcnt]) {
+          $input[$lp++]=$s;
+        } elsif($lp>0) {
+          print "Loaded pix line $gc, font height $lp\n";
+          if ($fh[$fontcnt]<$lp) { $fh[$fontcnt]=$lp; }
+          while ($fontview[$fontcnt][$gc] ne "") {
+            $cc=substr($fontview[$fontcnt][$gc], 0, 1);
+            substr($fontview[$fontcnt][$gc], 0, 1)="";
+  
+            $bc=0;
+            while ((substr($input[0], $bc, 1) eq $c_r[$fontcnt])||(substr($input[0], $bc, 1) eq $c_w[$fontcnt])) { $bc++; }
+            for ($i=0; $i<$lp; $i++) { substr($input[$i], 0, $bc)=""; }
+  
+            $bc=0;
+            while ((substr($input[0], $bc, 1) ne $c_r[$fontcnt])&&(substr($input[0], $bc, 1) ne $c_w[$fontcnt])) { $bc++; }
+            for ($i=0; $i<$lp; $i++) {
+              $chn="$fontcnt-$cc";
+              $ochar{$chn}.=substr($input[$i], 0, $bc)."\n";
+              substr($input[$i], 0, $bc)=""; 
+            }
+          }
+          $lp=0;
+          $gc++;
+        }
+      }
+    }
+    close(F);
+    $fontcnt++;
+  } while (($ARGV[$argp] ne "")&&($fontcnt<6));
+}
+
+sub addChar {
+  local($cfont, $cc)=@_[0, 1];
+  $chn="$cfont-$cc";
+  if ($cno{$chn} eq "") {
+    $omatrix=$ochar{$chn};
+    @view=split("\n", $omatrix);
+    $cp=$ccnt[$cfont];
+    if ($cc eq " ")               { $cp=2; }
+    if ($cc eq $fontwrap[$cfont]) { $cp=3; }
+    $cw[$cfont][$cp]=length($view[0]);
+    $ce[$cfont][$cp]=$cc;
+    for ($i=0; $i<$cw[$cfont][$cp]; $i++) {
+      $oval=0;
+      for($j=0; $j<$fh[$cfont]; $j++) {
+        $oval=$oval<<1;
+        $scanchar=substr($view[$j], $i, 1);
+#        if ($scanchar eq $c_b[$cfont]) { $oval++; print "*"; } else { print " "; }
+        if ($scanchar eq $c_b[$cfont]) { $oval++; }
+      }
+      $cv[$cfont][$cp]=$cv[$cfont][$cp].",".$oval;
+      $gbc[$cfont]++;
+      $gbca++;
+#      print "\n";
+    }
+    substr($cv[$cfont][$cp], 0, 1)="";
+    if ($cp>=10) { $ccnt[$cfont]++; }
+    $cno{$chn}=$cp;
+  }
+}
+
+sub mkbook {
+  for ($i=0; $i<100; $i++) { $ccnt[$i]=10; }
+  for ($i=0; $i<100; $i++) { $gbc[$i]=0; }
+  
+  %cno=();
+  @cv=();
+  $gbca=0;
+  $packc=0;
+  $occnt=0;
+  $pcc="";
+  system("rm -rf odata/*");
+  open(FO, ">odata/book$packc.dat");
+  
+  foreach $s (split("\n", $cdata)) {
+    while ($s ne "") {
+      $cc=substr($s, 0, 1); substr($s, 0, 1)="";
+      if ($cc eq "\r") { $cc=""; }
+      if ($cc eq "\t") { $cc=" "; }
+      if ($cc eq chr(0x15)) { $cc="";                   $cfont=0; outByte(4);   }
+      if ($cc eq chr(0x14)) { $cc=""; if ($fontcnt>1) { $cfont=1; outByte(5); } }
+      if ($cc eq chr(0x16)) { $cc=""; if ($fontcnt>2) { $cfont=2; outByte(6); } }
+      if ($cc eq chr(0x17)) { $cc=""; if ($fontcnt>3) { $cfont=3; outByte(7); } }
+      if ($cc eq chr(0x18)) { $cc=""; if ($fontcnt>4) { $cfont=4; outByte(8); } }
+      if ($cc eq chr(0x19)) { $cc=""; if ($fontcnt>5) { $cfont=5; outByte(9); } }
+      if (($cc eq " ")&&($pcc eq " ")) { $cc=""; }
+      if ($cc ne "") {
+        if (($i=index($fontfrom[$cfont], $cc))>=0) { $cc=substr($font__to[$cfont], $i, 1); }
+        $pcc=$cc;
+        addChar($cfont, $cc);
+        if (($occnt % 8192)==0) { close(FO); open(FO, ">odata/book$packc.dat"); $packc++;} $occnt++;
+        $chn="$cfont-$cc";
+        outByte($cno{$chn});
+      }
+    }
+    if (($occnt % 8192)==0) { close(FO); open(FO, ">odata/book$packc.dat"); $packc++; } $occnt++;
+    outByte(1);
+  }
+  if (($occnt % 8192)==0) { close(FO); open(FO, ">odata/book$packc.dat"); $packc++; } $occnt++;
+  outByte(0);
+  close(FO);
+  $filesize=$occnt;
+
+  open(FO, ">odata/cfg.dat");
+
+# Book size
+  $a=($filesize>>24)&0xFF; outByte($a);
+  $a=($filesize>>16)&0xFF; outByte($a);
+  $a=($filesize>>8 )&0xFF; outByte($a);
+  $a=($filesize    )&0xFF; outByte($a);
+
+# BG Color
+  outByte(255);
+  outByte(255);
+  outByte(255);
+
+# FG Color
+  outByte(0);
+  outByte(0);
+  outByte(0);
+
+# Part
+  outByte($bookpart);
+
+# Fonts
+  outByte($fontcnt);
+
+# Fonts full size
+  $a=($gbca>>8 )&0xFF; outByte($a);
+  $a=($gbca    )&0xFF; outByte($a);
+
+  outString($lname);
+
+  $fonts=""; for ($i=0; $i<$fontcnt; $i++) { $fonts=$fonts.", ".$fontdescr[$i]; }
+  substr($fonts, 0, 2)="";
+  outString($fonts);
+
+  outString($comversion);
+
+  close (FO);
+
+# Dumping font
+  for ($efont=0; $efont<$fontcnt; $efont++) {
+    print "Processing font $efont, $ccnt[$efont] chars\n";
+    open(FO, ">odata/fn$efont.dat");
+    outByte($fh[$efont]); # Height
+    outByte($ccnt[$efont]); # Chars
+    for ($i=0; $i<$ccnt[$efont]; $i++) {
+      outByte($cw[$efont][$i]);
+      $dump=$conv[$efont]->convert($ce[$efont][$i]);
+      if (length($dump)==1) {
+        outByte(0);
+      } else {
+        outByte(ord(substr($dump, 0, 1)));
+        substr($dump, 0, 1)="";
+      }
+      outByte(ord($dump));
+      foreach $odata(split(",", $cv[$efont][$i])) {
+        $a=($odata>>8 )&0xFF; outByte($a);
+        $a=($odata    )&0xFF; outByte($a);
+      }
+    }
+    close(FO);
+  }
+}
+
+sub outString {
+  local($string)=@_[0];
+  $len=length($string);
+  outByte($len);
+  for ($i=0; $i<$len; $i++) {
+    $cvc=substr($string, $i, 1);
+    $dump=$conv[0]->convert($cvc);
+    if (length($dump)==1) {
+      outByte(0);
+    } else {
+      outByte(ord(substr($dump, 0, 1)));
+      substr($dump, 0, 1)="";
+    }
+    outByte(ord($dump));
+  }
+}
+
+sub outByte {
+  local($ob)=@_[0];
+  print FO chr($ob);
+}
+
+sub mkJar {
+  local($type, $nshort, $icldc)=@_[0, 1, 2, 3];
+# font=string;
+# type=0 - MIDP 1;
+#      1 - MIDP 2;
+#      2 - NOKIA;
+# file=string, file to progress
+# nshort=string, short name of book
+# nlong=string, long name of a book
+
+  $midlet_name=$nshort;
+  if ($type==0) { $midlet_profile="MIDP-1.0"; }
+  if ($type==1) { $midlet_profile="MIDP-2.0"; }
+  if ($type==2) { $midlet_profile="MIDP-1.0"; }
+  if ($icldc==0){ $midlet_cldc="CLDC-1.0"; }
+  if ($icldc==1){ $midlet_cldc="CLDC-1.1"; }
+  
+  mkdir("odata/META-INF");
+  open (FILE, "+>odata/META-INF/MANIFEST.MF");
+  print(FILE  "Manifest-Version: 1.0\r\n");
+  print(FILE  "MicroEdition-Configuration: $midlet_cldc\r\n");
+  print(FILE  "MicroEdition-Profile: $midlet_profile\r\n");
+  print(FILE  "MIDlet-Name: $midlet_name\r\n");
+  print(FILE  "MIDlet-Vendor: Handmade\r\n");
+  print(FILE  "MIDlet-Version: 9.1\r\n");
+  print(FILE  "MIDlet-1: $midlet_name, /logo.png, TBookMIDlet\r\n");
+  close(FILE);
+  if ($type==0) { system("cp data/TBookCanvas.class.midp1 odata/TBookCanvas.class"); }
+  if ($type==1) { system("cp data/TBookCanvas.class.midp2 odata/TBookCanvas.class"); }
+  if ($type==2) { system("cp data/TBookCanvas.class.nk    odata/TBookCanvas.class"); }
+  system("cp data/TBookMIDlet.class odata/TBookMIDlet.class");
+  system("cp data/TBookTimer.class  odata/TBookTimer.class");
+
+  system("cp data/logo.png  odata/logo.png");
+  system("cp data/point.png odata/point.png");
+  system("cd odata; zip -r ../jars/$midlet_name.jar * > /dev/null; cd ..");
+  $filesize=-s "jars/$midlet_name.jar";
+  open(FO, "+>jars/$midlet_name.jad");
+  print(FO "MicroEdition-Configuration: $midlet_cldc\r\n");
+  print(FO "MicroEdition-Profile: $midlet_profile\r\n");
+  print(FO "MIDlet-Name: $midlet_name\r\n");
+  print(FO "MIDlet-Vendor: Handmade\r\n");
+  print(FO "MIDlet-Version: 9.1\r\n");
+  print(FO "MIDlet-Jar-URL: $midlet_name.jar\r\n");
+  print(FO "MIDlet-Jar-Size: $filesize\r\n");
+  print(FO "MIDlet-1: $midlet_name, /logo.png, TBookMIDlet\r\n");
+  close(FO);
+}

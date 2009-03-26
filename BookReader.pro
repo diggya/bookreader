@@ -1,0 +1,4 @@
+-libraryjars /usr/local/sun-wtk/lib/midpapi10.jar:/usr/local/sun-wtk/lib/cldcapi10.jar:/usr/local/sun-wtk/lib/cldcapi10.jar
+-injars /home/pserge/j2mewtk/2.5.2/apps/BookReader/bin/BookReader.jar
+-outjar /tmp/BookReader.jar
+-keep public class * extends javax.microedition.midlet.MIDlet 
