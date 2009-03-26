@@ -1,0 +1,3 @@
+#!/bin/sh
+
+git push ssh://192.168.2.190/home/pserge/repo.git/bookreader/ master
