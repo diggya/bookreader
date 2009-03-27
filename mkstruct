@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# file create necessary directories
+
 mkdir bin
 mkdir lib
 mkdir res
