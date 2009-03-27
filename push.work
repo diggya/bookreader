@@ -1,4 +1,0 @@
-#!/bin/sh
-
-git push ssh://192.168.2.190/home/pserge/repo.git/bookreader/ master
-ssh 192.168.2.190 "cd /home/pserge/repo.git/bookreader; git push ssh://kastaneda.kiev.ua/home/pserge/repo.git/bookreader/ master"

@@ -1,4 +1,0 @@
-#!/bin/sh
-
-ssh 192.168.2.190 "cd /home/pserge/repo.git/bookreader; git pull ssh://kastaneda.kiev.ua/home/pserge/repo.git/bookreader/"
-git pull ssh://192.168.2.190/home/pserge/repo.git/bookreader/ master

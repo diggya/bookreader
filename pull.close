@@ -1,3 +1,0 @@
-#!/bin/sh
-
-git pull ssh://kastaneda.kiev.ua/home/pserge/repo.git/bookreader/
